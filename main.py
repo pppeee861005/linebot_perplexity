@@ -157,21 +157,29 @@ search_module = PerplexitySearchModule(PERPLEXITY_API_KEY)
 
 # 搜尋決策提示模板
 SEARCH_DECISION_TEMPLATE = """
-根據對話歷史和使用者訊息，判斷是否需要進行網路搜尋來回答問題。
+你是一個AI助手，需要判斷用戶的問題是否需要進行網路搜尋。
 
-回覆格式：JSON 格式 {"search": "Y" 或 "N", "keyword": "搜尋關鍵字"}
+分析以下對話歷史和用戶訊息，決定是否需要搜尋網路來提供準確答案。
+
+回覆格式：必須是有效的JSON格式，格式如下：
+{{"search": "Y", "keyword": "搜尋關鍵字"}}
+
+或者
+
+{{"search": "N", "keyword": ""}}
 
 規則：
-- 如果問題涉及最新資訊、事實查詢、或需要外部知識，設定 search: "Y"
-- 如果是個人意見、一般閒聊、或已有足夠資訊，設定 search: "N"
-- keyword 應為簡潔的搜尋關鍵字
+- 如果問題涉及最新資訊、事實查詢、時事新聞、統計數據、或需要外部知識，設定 search: "Y"
+- 如果是個人意見、一般閒聊、情感問題、或已有足夠資訊，設定 search: "N"
+- keyword 應為簡潔的搜尋關鍵字，不要超過10個字
+- 必須嚴格按照JSON格式回覆，不要添加任何額外文字
 
 對話歷史:
 {history}
 
 使用者訊息: {message}
 
-請以 JSON 格式回覆。
+請只回覆JSON，不要有任何其他內容。
 """
 
 
@@ -253,7 +261,33 @@ def create_app():
                         model='gemini-2.5-flash-lite',
                         contents=[search_prompt]
                     )
-                    search_decision = json.loads(search_response.text)
+
+                    # 嘗試解析 JSON 回應
+                    response_text = search_response.text.strip()
+                    logger.info(f"Gemini 回應: {response_text}")
+
+                    # 嘗試直接解析 JSON
+                    try:
+                        search_decision = json.loads(response_text)
+                    except json.JSONDecodeError:
+                        # 如果直接解析失敗，嘗試從文字中提取 JSON
+                        import re
+                        json_match = re.search(r'\{.*\}', response_text)
+                        if json_match:
+                            try:
+                                search_decision = json.loads(json_match.group())
+                            except json.JSONDecodeError:
+                                logger.warning(f"無法解析 Gemini JSON 回應: {response_text}")
+                                search_decision = {"search": "N", "keyword": ""}
+                        else:
+                            logger.warning(f"Gemini 回應中沒有找到 JSON: {response_text}")
+                            search_decision = {"search": "N", "keyword": ""}
+
+                    # 驗證 JSON 結構
+                    if not isinstance(search_decision, dict) or "search" not in search_decision:
+                        logger.warning(f"無效的搜尋決策格式: {search_decision}")
+                        search_decision = {"search": "N", "keyword": ""}
+
                 except Exception as e:
                     logger.warning(f"搜尋決策失敗: {e}")
                     search_decision = {"search": "N", "keyword": ""}
