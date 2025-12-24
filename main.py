@@ -2,9 +2,9 @@
 # Python x AI Agent
 # Flask, Linebot, deployment - 網站伺服器串聯LINE服務
 #
-# Version: v1.1.0
+# Version: v1.2.0
 # Release Date: 2025-12-24
-# Description: LINE AI 聊天機器人初始版本 - 支援 @助教 與 @請查詢 兩種模式
+# Description: LINE AI 聊天機器人 - 支援 @助教 與 @請查詢 雙重互動模式，JSON 解析已修復
 #
 # [作業]
 # LINE AI Bot 自主網搜聊天機器人
@@ -30,9 +30,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # 應用程式版本資訊
-__version__ = "1.0.0"
+__version__ = "1.2.0"
 __author__ = "LINE AI Bot Developer"
-__description__ = "LINE AI 聊天機器人"
+__description__ = "LINE AI 聊天機器人 - 支援雙重互動模式"
 
 # 從環境變數取得配置（使用 os.environ 直接存取）
 try:
