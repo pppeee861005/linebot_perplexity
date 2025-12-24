@@ -2,9 +2,9 @@
 # Python x AI Agent
 # Flask, Linebot, deployment - 網站伺服器串聯LINE服務
 #
-# Version: v1.0.0
+# Version: v1.1.0
 # Release Date: 2025-12-24
-# Description: LINE AI 聊天機器人初始版本
+# Description: LINE AI 聊天機器人初始版本 - 支援 @助教 與 @請查詢 兩種模式
 #
 # [作業]
 # LINE AI Bot 自主網搜聊天機器人
@@ -125,22 +125,54 @@ class PerplexitySearchModule:
 
 # 觸發過濾器
 class TriggerFilter:
-    """檢測訊息是否以 @助教 開頭，決定是否觸發 AI 回應"""
+    """檢測訊息是否以支援的關鍵字開頭，決定是否觸發 AI 回應"""
 
-    TRIGGER_KEYWORD = "@助教"
+    TRIGGER_KEYWORDS = ["@助教", "@請查詢"]
 
     @staticmethod
     def is_triggered(message):
-        """檢查訊息是否以 @助教 開頭"""
-        return message.strip().startswith(TriggerFilter.TRIGGER_KEYWORD)
+        """檢查訊息是否以任何支援的關鍵字開頭"""
+        return any(message.strip().startswith(keyword) for keyword in TriggerFilter.TRIGGER_KEYWORDS)
+
+    @staticmethod
+    def get_trigger_type(message):
+        """取得觸發的關鍵字類型"""
+        for keyword in TriggerFilter.TRIGGER_KEYWORDS:
+            if message.strip().startswith(keyword):
+                return keyword
+        return None
 
     @staticmethod
     def extract_content(message):
-        """提取 @助教 之後的內容"""
-        if TriggerFilter.is_triggered(message):
-            content = message[len(TriggerFilter.TRIGGER_KEYWORD):].strip()
+        """提取關鍵字之後的內容"""
+        trigger_type = TriggerFilter.get_trigger_type(message)
+        if trigger_type:
+            content = message[len(trigger_type):].strip()
             return content
         return None
+
+
+# 初始化 Perplexity 搜尋模組
+search_module = PerplexitySearchModule(PERPLEXITY_API_KEY)
+
+# 搜尋決策提示模板
+SEARCH_DECISION_TEMPLATE = """
+根據對話歷史和使用者訊息，判斷是否需要進行網路搜尋來回答問題。
+
+回覆格式：JSON 格式 {"search": "Y" 或 "N", "keyword": "搜尋關鍵字"}
+
+規則：
+- 如果問題涉及最新資訊、事實查詢、或需要外部知識，設定 search: "Y"
+- 如果是個人意見、一般閒聊、或已有足夠資訊，設定 search: "N"
+- keyword 應為簡潔的搜尋關鍵字
+
+對話歷史:
+{history}
+
+使用者訊息: {message}
+
+請以 JSON 格式回覆。
+"""
 
 
 
@@ -177,66 +209,81 @@ def create_app():
 
         logger.info(f"收到來自 {user_id} 的訊息: {user_message}")
 
-        # 檢查訊息是否以 @助教 開頭
+        # 檢查訊息是否以支援的關鍵字開頭
         if not TriggerFilter.is_triggered(user_message):
-            logger.info(f"訊息未觸發 @助教，忽略")
+            logger.info("訊息未觸發支援的關鍵字，忽略")
             return
 
-        # 提取 @助教 之後的內容
+        # 取得觸發類型和內容
+        trigger_type = TriggerFilter.get_trigger_type(user_message)
         triggered_content = TriggerFilter.extract_content(user_message)
 
+        if not triggered_content:
+            logger.info("觸發關鍵字後沒有內容，忽略")
+            return
+
         try:
-            # 新增使用者訊息到歷史
-            conversation_manager.add_message(user_id, triggered_content)
+            if trigger_type == "@請查詢":
+                # 直接搜尋模式
+                logger.info(f"直接搜尋模式: {triggered_content}")
+                search_results = search_module.search(triggered_content)
+                reply_content = search_results
 
-            # 取得對話歷史
-            history = conversation_manager.get_history(user_id)
+            elif trigger_type == "@助教":
+                # AI 對話模式
+                logger.info(f"AI 對話模式: {triggered_content}")
 
-            # 構建歷史字符串
-            history_str = "\n".join(history[:-1]) if len(history) > 1 else "（無歷史）"
+                # 新增使用者訊息到歷史
+                conversation_manager.add_message(user_id, triggered_content)
 
-            # 判斷是否需要搜尋
-            search_prompt = SEARCH_DECISION_TEMPLATE.format(
-                history=history_str,
-                message=triggered_content
-            )
+                # 取得對話歷史
+                history = conversation_manager.get_history(user_id)
 
-            try:
-                search_response = gemini_client.models.generate_content(
-                    model='gemini-2.5-flash-lite',
-                    contents=[search_prompt]
+                # 構建歷史字符串
+                history_str = "\n".join(history[:-1]) if len(history) > 1 else "（無歷史）"
+
+                # 判斷是否需要搜尋
+                search_prompt = SEARCH_DECISION_TEMPLATE.format(
+                    history=history_str,
+                    message=triggered_content
                 )
-                search_decision = json.loads(search_response.text)
-            except Exception as e:
-                logger.warning(f"搜尋決策失敗: {e}")
-                search_decision = {"search": "N", "keyword": ""}
 
-            # 準備回覆內容
-            reply_content = ""
-            if search_decision.get("search") == "Y" and search_decision.get("keyword"):
-                keyword = search_decision["keyword"]
-                logger.info(f"執行搜尋: {keyword}")
-                search_results = search_module.search(keyword)
-                reply_content = f"搜尋結果:\n{search_results}\n\n"
+                try:
+                    search_response = gemini_client.models.generate_content(
+                        model='gemini-2.5-flash-lite',
+                        contents=[search_prompt]
+                    )
+                    search_decision = json.loads(search_response.text)
+                except Exception as e:
+                    logger.warning(f"搜尋決策失敗: {e}")
+                    search_decision = {"search": "N", "keyword": ""}
 
-            # 生成最終回覆
-            system_prompt = """你是一個有幫助的 LINE 聊天機器人助手。請用繁體中文回覆。每次交談只顯示30個字，超過的部分，顯示請說繼續，如果使用者說繼續的話，你要說繼續要加錢。
-            例如：從前有一隻小豬，住在山上然後 ....請說{繼續}。使用者說：繼讀。你說：繼續要加錢!
+                # 準備回覆內容
+                reply_content = ""
+                if search_decision.get("search") == "Y" and search_decision.get("keyword"):
+                    keyword = search_decision["keyword"]
+                    logger.info(f"執行搜尋: {keyword}")
+                    search_results = search_module.search(keyword)
+                    reply_content = f"搜尋結果:\n{search_results}\n\n"
 
-            """
+                # 生成最終回覆
+                system_prompt = """你是一個有幫助的 LINE 聊天機器人助手。請用繁體中文回覆。每次交談只顯示30個字，超過的部分，顯示請說繼續，如果使用者說繼續的話，你要說繼續要加錢。
+                例如：從前有一隻小豬，住在山上然後 ....請說{繼續}。使用者說：繼讀。你說：繼續要加錢!
 
-            # 構建完整訊息
-            full_prompt = f"{system_prompt}\n\n對話歷史:\n{history_str}\n\n使用者訊息: {triggered_content}"
+                """
 
-            response = gemini_client.models.generate_content(
-                model='gemini-2.5-flash-lite',
-                contents=[full_prompt]
-            )
+                # 構建完整訊息
+                full_prompt = f"{system_prompt}\n\n對話歷史:\n{history_str}\n\n使用者訊息: {triggered_content}"
 
-            reply_content += response.text
+                response = gemini_client.models.generate_content(
+                    model='gemini-2.5-flash-lite',
+                    contents=[full_prompt]
+                )
 
-            # 新增 AI 回覆到歷史
-            conversation_manager.add_message(user_id, response.text)
+                reply_content += response.text
+
+                # 新增 AI 回覆到歷史
+                conversation_manager.add_message(user_id, response.text)
 
             # 發送回覆
             line_bot_api.reply_message(
@@ -244,7 +291,7 @@ def create_app():
                 TextSendMessage(text=reply_content)
             )
 
-            logger.info(f"已回覆 {user_id}")
+            logger.info(f"已回覆 {user_id}: {trigger_type}")
         except Exception as e:
             logger.error(f"處理訊息時出錯: {e}")
             try:
