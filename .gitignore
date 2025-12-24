@@ -163,3 +163,7 @@ config/secrets.json
 
 # Deployment
 .pythonanywhere/
+
+# Test files
+test.py
+
