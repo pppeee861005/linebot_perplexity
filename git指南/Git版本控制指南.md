@@ -248,6 +248,170 @@ git checkout v1.0.0
 git diff v1.0.0 v1.1.0
 ```
 
+## 遠端倉庫推送指南
+
+### 遠端倉庫設定
+
+#### 建立遠端倉庫
+1. **GitHub**：前往 https://github.com/new 建立新倉庫
+2. **GitLab**：前往 https://gitlab.com/projects/new 建立新倉庫
+3. **其他平台**：Bitbucket、Codeberg 等
+
+#### 設定遠端來源
+```bash
+# 新增遠端倉庫（使用 HTTPS）
+git remote add origin https://github.com/username/repo-name.git
+
+# 或使用 SSH（需要 SSH 金鑰設定）
+git remote add origin git@github.com:username/repo-name.git
+
+# 檢視遠端設定
+git remote -v
+
+# 重新命名遠端
+git remote rename origin upstream
+
+# 移除遠端
+git remote remove origin
+```
+
+### 推送操作
+
+#### 基本推送
+```bash
+# 推送主分支並設定上游分支
+git push -u origin main
+
+# 推送其他分支
+git push origin feature-branch
+
+# 強制推送（小心使用，可能覆蓋遠端變更）
+git push --force-with-lease origin main
+```
+
+#### 推送標籤
+```bash
+# 推送單一標籤
+git push origin v1.0.0
+
+# 推送所有標籤
+git push origin --tags
+
+# 推送所有分支和標籤
+git push --all --tags origin
+```
+
+#### 拉取更新
+```bash
+# 拉取遠端變更並合併
+git pull origin main
+
+# 只擷取遠端變更（不合併）
+git fetch origin
+
+# 拉取所有分支
+git pull --all
+```
+
+### 常見推送情境
+
+#### 首次推送專案
+```bash
+# 設定遠端倉庫
+git remote add origin https://github.com/username/my-project.git
+
+# 推送主分支
+git push -u origin main
+
+# 推送標籤
+git push origin --tags
+```
+
+#### 推送功能分支
+```bash
+# 建立功能分支
+git checkout -b feature/new-feature
+
+# 開發功能並提交
+git add .
+git commit -m "Add new feature"
+
+# 推送功能分支
+git push -u origin feature/new-feature
+
+# 建立 Pull Request（在 GitHub/GitLab 上）
+```
+
+#### 同步遠端變更
+```bash
+# 檢查遠端狀態
+git status
+
+# 拉取最新變更
+git pull origin main
+
+# 如果有衝突，手動解決後提交
+git add .
+git commit -m "Merge remote changes"
+git push origin main
+```
+
+### 推送問題解決
+
+#### 推送被拒絕（non-fast-forward）
+```bash
+# 拉取遠端變更
+git pull origin main --rebase
+
+# 或強制推送（注意：會覆蓋遠端）
+git push --force-with-lease origin main
+```
+
+#### 身份驗證問題
+```bash
+# 使用個人存取權杖（GitHub）
+git remote set-url origin https://username:token@github.com/username/repo.git
+
+# 或設定 SSH 金鑰
+ssh-keygen -t ed25519 -C "your_email@example.com"
+# 將公鑰加入 GitHub SSH Keys
+```
+
+#### 大檔案推送問題
+```bash
+# 安裝 Git LFS（大檔案支援）
+git lfs install
+git lfs track "*.zip"
+git add .gitattributes
+git commit -m "Add Git LFS tracking"
+
+# 或移除大檔案
+git rm --cached large-file.zip
+git commit -m "Remove large file"
+```
+
+### 推送最佳實務
+1. **定期推送**：避免積累太多本機提交
+2. **使用有意義的提交訊息**：方便追蹤變更
+3. **確認分支**：推送前確認在正確分支
+4. **避免強制推送**：除非確定不會影響他人
+5. **設定上游分支**：使用 `-u` 設定預設推送目標
+
+### 實際工作流程
+```bash
+# 日常開發流程
+git checkout main
+git pull origin main          # 同步最新變更
+git checkout -b feature/work  # 建立功能分支
+# ... 開發工作 ...
+git add .
+git commit -m "Implement feature"
+git push origin feature/work  # 推送功能分支
+# ... 建立 Pull Request ...
+git checkout main
+git pull origin main          # 合併後同步
+```
+
 ## 分支管理
 
 ### 基本分支操作
