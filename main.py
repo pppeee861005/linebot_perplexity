@@ -39,6 +39,7 @@ try:
     LINE_CHANNEL_ACCESS_TOKEN = os.environ['LINE_CHANNEL_ACCESS_TOKEN']
     LINE_CHANNEL_SECRET = os.environ['LINE_CHANNEL_SECRET']
     GEMINI_API_KEY = os.environ['GEMINI_API_KEY']
+    PERPLEXITY_API_KEY = os.environ['PERPLEXITY_API_KEY']  # 新增這行
 except KeyError as e:
     logger.error(f"缺少環境變數: {e}")
     raise
@@ -50,25 +51,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 # 初始化 Gemini API
 gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-# 搜尋決策樣板
-SEARCH_DECISION_TEMPLATE = '''
-根據以下對話歷史和使用者的最新訊息，判斷是否需要進行網路搜尋才能提供準確的回覆。
 
-對話歷史:
-{history}
-
-使用者訊息: {message}
-
-請以以下 JSON 格式回覆（只回覆 JSON，不要其他文字）:
-{{
-    "search": "Y" 或 "N",
-    "keyword": "如果需要搜尋，提供搜尋關鍵字；否則留空"
-}}
-
-判斷標準:
-- 如果訊息涉及最新事件、時事、產品發布等需要最新資訊的內容，回覆 "Y"
-- 如果訊息是一般知識、概念解釋或不需要最新資訊的內容，回覆 "N"
-'''
 
 # 對話管理器
 class ConversationManager:
@@ -100,6 +83,46 @@ class ConversationManager:
 # 全域對話管理器實例
 conversation_manager = ConversationManager()
 
+
+class PerplexitySearchModule:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.base_url = "https://api.perplexity.ai/chat/completions"
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+    
+    def search(self, query, num_results=5):
+        """使用 Perplexity AI 進行搜尋"""
+        try:
+            import requests
+            
+            payload = {
+                "model": "sonar-pro",
+                "messages": [
+                    {
+                        "role": "user", 
+                        "content": f"Search for: {query}. Provide {num_results} key results with brief descriptions."
+                    }
+                ],
+                "max_tokens": 1000
+            }
+            
+            response = requests.post(self.base_url, json=payload, headers=self.headers)
+            response.raise_for_status()
+            
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            
+            # 格式化結果
+            result = f"Perplexity 搜尋結果:\n{query}\n\n{content}"
+            return result
+            
+        except Exception as e:
+            return f"Perplexity 搜尋失敗: {str(e)}"
+
+
 # 觸發過濾器
 class TriggerFilter:
     """檢測訊息是否以 @助教 開頭，決定是否觸發 AI 回應"""
@@ -119,32 +142,7 @@ class TriggerFilter:
             return content
         return None
 
-# Google 搜尋模組
-class GoogleSearchModule:
-    """執行 Google 網路搜尋"""
 
-    def search(self, keyword, num_results=5):
-        """執行 Google 搜尋"""
-        try:
-            from googlesearch import search
-            results = []
-            for url in search(keyword, num_results=num_results, lang="zh-TW"):
-                results.append(url)
-
-            if not results:
-                return "未找到相關搜尋結果。"
-
-            result_text = f"搜尋關鍵字: {keyword}\n搜尋結果:\n"
-            for i, url in enumerate(results, 1):
-                result_text += f"{i}. {url}\n"
-
-            return result_text
-        except Exception as e:
-            logger.error(f"Google 搜尋錯誤: {e}")
-            return f"搜尋失敗: {str(e)}"
-
-# 全域搜尋模組實例
-search_module = GoogleSearchModule()
 
 # 建立 Flask 應用程式
 def create_app():
