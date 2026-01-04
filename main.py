@@ -127,7 +127,7 @@ class PerplexitySearchModule:
 class TriggerFilter:
     """檢測訊息是否以支援的關鍵字開頭，決定是否觸發 AI 回應"""
 
-    TRIGGER_KEYWORDS = ["@助教", "@請查詢"]
+    TRIGGER_KEYWORDS = ["@助教"]
 
     @staticmethod
     def is_triggered(message):
@@ -231,13 +231,9 @@ def create_app():
             return
 
         try:
-            if trigger_type == "@請查詢":
-                # 直接搜尋模式
-                logger.info(f"直接搜尋模式: {triggered_content}")
-                search_results = search_module.search(triggered_content)
-                reply_content = search_results
+            
 
-            elif trigger_type == "@助教":
+            if trigger_type == "@助教":
                 # AI 對話模式
                 logger.info(f"AI 對話模式: {triggered_content}")
 
